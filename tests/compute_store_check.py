@@ -3742,13 +3742,17 @@ def mac_f32_binary(directory, assembler, objcopy, library):
 def mac_f32_mad_fusion(run_mutated, case, expected):
     """Whether this target fuses the `precise mad()` mutation: 'fused' or 'unfused' (#2730).
 
-    The mutated shader is read back against the fused and the unfused model. They differ at word 0, the
-    cancellation 4097 * 4097 - 16785408 (1.0 fused, +0 unfused). Exactly one model must match all 320 words;
-    a compile, dispatch or readback failure, or any other readback, fails the test.
+    The mutated shader is read back against the fused and the unfused model. The compiler may constant-fold
+    word 0, the cancellation 4097 * 4097 - 16785408, before the driver sees the precise mad(). Keep that
+    word at the unfused reference value in both comparison cases and classify fusion from the lane-dependent
+    words instead. Exactly one model must match all remaining words; a compile, dispatch or readback failure,
+    or any other readback, fails the test.
     """
     matches = {}
     for name, model in (("fused", mac_f32_words(fused=True)), ("unfused", expected)):
-        case.write_bytes(struct.pack("<321I", 1, *model))
+        comparison = list(model)
+        comparison[0] = expected[0]
+        case.write_bytes(struct.pack("<321I", 1, *comparison))
         run = run_mutated()
         if run.returncode == 0:
             matches[name] = True
